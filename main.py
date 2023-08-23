@@ -4,7 +4,7 @@ SCREEN_WIDTH = 900
 SCREEN_HEIGHT = 600
 
 pygame.init()
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT + 50))
 clock = pygame.time.Clock()
 
 if __name__ == '__main__':

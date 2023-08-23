@@ -5,13 +5,10 @@ from random import randint
 from main import SCREEN_HEIGHT, SCREEN_WIDTH
 
 class Player:
-    def __init__(self, x, y, speed, damage):
+    def __init__(self, x, y, speed, damage, Gun):
         self.rect = pygame.Rect(x, y, 40, 40)
         self.speed = speed
-        self.bullet_group = pygame.sprite.Group()
-        self.bullet_active = False
-        self.last_shot_time = 0
-        self.shot_cooldown = 50 #ms
+        self.Gun = Gun
         self.damage = damage
         self.hp = 5
         self.hp_max = 5
@@ -29,11 +26,12 @@ class Player:
         pygame.draw.line(surface, 'WHITE', (self.rect.left, self.rect.topleft[1] - 10), (self.rect.right, self.rect.topright[1] - 10), 3)
         pygame.draw.line(surface, 'RED', (self.rect.left, self.rect.topleft[1] - 10), (end_posx_red, self.rect.topright[1] - 10), 3)
         
-    def update(self, screen, pos, game_timer, enemy_group):
+        
+    def update(self, screen, mouse_pos, game_timer, enemy_group):
         # player move
         self.move()
         # player shoot
-        self.shoot(screen, pos, game_timer)
+        self.Gun.update(self.rect.center, mouse_pos, game_timer)
         # player collide enemy
         self.collide_enemy(enemy_group)
         if self.hp <= 0:
@@ -68,25 +66,89 @@ class Player:
             self.rect.top = 0
         elif self.rect.left <= 0:
             self.rect.left = 0
-            
-    def shoot(self, screen, pos, game_timer):
-
-        if pygame.mouse.get_pressed()[0]:
-             if game_timer - self.last_shot_time >= self.shot_cooldown:
-                bullet = Bullet(self.rect.centerx, self.rect.centery, pos, self.damage)
-                self.bullet_group.add(bullet)
-                self.bullet_active = True
-                self.last_shot_time = game_timer
-                
-        self.bullet_group.update()
-        self.bullet_group.draw(screen)
-        
+           
     def collide_enemy(self, enemy_group):
         collision_list = pygame.sprite.spritecollide(self, enemy_group, True)
         if len(collision_list) > 0:
             self.hp -= 1
                     
+class Gun():
+    def __init__(self, ammos, speed, speedGun, reloadTime, damage):
+        self.shoot = pygame.USEREVENT + 1
+        pygame.time.set_timer(self.shoot, speedGun)
+        self.reloadTime = reloadTime # time to reload ammos
+        self.reloading = False # is reload
+        self.speed = speed # speed of ammo
+        self.ammos = ammos 
+        self.ammos_max = ammos
+        self.damage = damage
+        self.magazine = []
+        self.shot_timer = 0  # Initialize the shot timer
+        self.shot_interval = speedGun # Set the desired shot interval in milliseconds
         
+        for _ in range(self.ammos):
+            bullet = Bullet(self.damage)
+            self.magazine.append(bullet)
+        
+    def update(self, player_pos, mouse_pos, current_time):
+        if self.ammos > 0:
+            self.reloading = False
+            self.fire(player_pos, mouse_pos, current_time)
+        else:
+            self.reloading = True
+            self.reloadMag(current_time)
+            
+    def fire(self, player_pos, mouse_pos, current_time):
+        if pygame.mouse.get_pressed()[0]:
+            if current_time - self.shot_timer >= self.shot_interval:
+                self.shot_timer = current_time  # Update the shot timer
+                self.magazine[self.ammos-1].reset(player_pos, mouse_pos)
+                self.magazine[self.ammos-1].active = True
+                self.ammos -= 1
+                
+    def reloadMag(self, current_time):
+        if current_time - self.shot_timer >= self.reloadTime:
+            self.shot_timer = current_time
+            self.ammos = self.ammos_max
+    
+    def getTimeReload(self, current_time):
+        time_remaining = round((self.reloadTime - (current_time - self.shot_timer))/1000, 1)
+        if self.reloading:
+            return time_remaining
+        else:
+            return 0
+        
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, damage):
+        super().__init__()
+        self.image = pygame.Surface((10, 10)) 
+        self.rect = self.image.get_rect()  
+        self.speed = 8
+        self.active = False
+        self.damage = damage
+        
+    def update(self):
+        if self.active:
+            if self.direction.length() > 0:
+                self.direction.normalize_ip()
+                self.rect.x += self.direction.x * self.speed
+                self.rect.y += self.direction.y * self.speed
+            
+            if self.rect.x < 0 or self.rect.x > SCREEN_WIDTH or self.rect.y < 0 or self.rect.y > SCREEN_HEIGHT:
+                self.active = False
+                
+    def reset(self, player_pos, mouse_pos):
+        self.rect.center = player_pos
+        self.direction =  Vector2(mouse_pos) - Vector2(self.rect.center)
+        
+    def draw(self, screen):
+        if self.active:
+            pygame.draw.rect(screen, 'WHITE', self.rect, 0, 3)
+    
+    def inflictDmg(self):
+        return self.damage if self.active else 0
+            
+            
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, speed, hp):
         super().__init__()
@@ -112,50 +174,26 @@ class Enemy(pygame.sprite.Sprite):
         self.hp_max = hp
         
         
-    def update(self, player_pos, bullet_group):
+    def update(self, player_pos, Gun: Gun):
         direction = Vector2(player_pos) - Vector2(self.rect.center)
         if direction.length() > 0:
             direction.normalize_ip()
         self.rect.x += direction.x * self.speed
         self.rect.y += direction.y * self.speed
-        
-        for bul in bullet_group:
-            if pygame.Rect.colliderect(self.rect, bul.rect):
-                bul.kill()
-                self.hp -= bul.damage
-        
         if self.hp <= 0:
             self.kill()
+        else:
+            self.checkShooted(Gun)
     
+    def checkShooted(self, Gun):
+        for bul in Gun.magazine:
+            if self.rect.collidepoint(bul.rect.centerx, bul.rect.centery):
+                self.hp -= bul.inflictDmg()
+                bul.active = False
+                
     def draw(self, screen):
         screen.blit(self.image, self.rect.topleft)
         end_posx_red = (self.rect.right - self.rect.left) * (self.hp/self.hp_max) + self.rect.left
         pygame.draw.line(screen, 'WHITE', (self.rect.left, self.rect.topleft[1] - 10), (self.rect.right, self.rect.topright[1] - 10), 3)
         pygame.draw.line(screen, 'RED', (self.rect.left, self.rect.topleft[1] - 10), (end_posx_red, self.rect.topright[1] - 10), 3)
-
-
-        
-
-class Bullet(pygame.sprite.Sprite):
-    def __init__(self, x, y, pos, damage):
-        super().__init__()
-        self.image = pygame.Surface((10, 10))  
-        self.image.fill('WHITE')  
-        self.rect = self.image.get_rect()  
-        self.rect.x = x
-        self.rect.y = y
-        self.speed = 8
-        self.direction =  Vector2(pos) - Vector2(self.rect.center)
-        self.active = True
-        self.damage = damage
-        
-    def update(self):
-        if self.direction.length() > 0:
-            self.direction.normalize_ip()
-        self.rect.x += self.direction.x * self.speed
-        self.rect.y += self.direction.y * self.speed
-        
-        if self.rect.x < 0 or self.rect.x > SCREEN_WIDTH or self.rect.y < 0 or self.rect.y > SCREEN_HEIGHT:
-            self.active = False
-        if not self.active:
-            self.kill()
+            
