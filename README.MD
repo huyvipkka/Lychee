@@ -1,0 +1,3 @@
+change gun : 1, 2 ...
+move : asdw or button direct
+fire : mouse click

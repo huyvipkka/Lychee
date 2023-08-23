@@ -1,6 +1,8 @@
 import pygame, sys
 from classes import Player, Enemy, Gun
 from main import screen, clock
+from other import *
+from main import SCREEN_HEIGHT, SCREEN_WIDTH
 
 player_speed = 4
 enemy_speed = 1
@@ -13,8 +15,11 @@ def startGame():
 
 def gamePlay():
     enemy_max = 5
-    gatling_gun = Gun(30, 8, 100, 3000, 10)
-    player = Player(400, 300, player_speed, damage, gatling_gun)
+    dict_gun = {
+        pygame.K_1 : Gun('gatling_gun', ammos=100, speed=6, speedGun=50, reloadTime=5000, damage=5, color='white'),  
+        pygame.K_2 : Gun('pistol', ammos=7, speed=10, speedGun=500, reloadTime=2000, damage=50, color='red')
+    }
+    player = Player(400, 300, player_speed, damage, dict_gun)
     enemy_group = pygame.sprite.Group()
     
     while True:
@@ -27,9 +32,6 @@ def gamePlay():
         clock.tick(FPS)
         pos = pygame.mouse.get_pos()
         current_time = pygame.time.get_ticks()
-        print(player.Gun.ammos, end="\t")
-        print(player.Gun.getTimeReload(current_time))
-        pygame.draw.line(screen, 'white', (0, 600), (900, 600))
         #create enemy if enemy < enemy max
         if len(enemy_group) < enemy_max:
             enemy = Enemy(enemy_speed, enemy_hp)
@@ -38,14 +40,17 @@ def gamePlay():
         # update(move) player, enemy
         player.update(screen, pos, current_time, enemy_group)
         enemy_group.update(player.rect.center, player.Gun)
+        
         # draw enemy, player
         player.draw(screen, pos)
         for ene in enemy_group:
             ene.draw(screen)
-        for bul in player.Gun.magazine:
-            bul.update()
-            bul.draw(screen)
-        
+        for gun in player.dict_gun.values():
+            for bul in gun.magazine:
+                bul.update()
+                bul.draw(screen)
+        # draw panel
+        draw_panel(player, screen, current_time)
         if player.die:
            gameOver()
     

@@ -5,10 +5,12 @@ from random import randint
 from main import SCREEN_HEIGHT, SCREEN_WIDTH
 
 class Player:
-    def __init__(self, x, y, speed, damage, Gun):
+    def __init__(self, x, y, speed, damage, dict_gun):
         self.rect = pygame.Rect(x, y, 40, 40)
+        self.dict_gun = dict_gun
         self.speed = speed
-        self.Gun = Gun
+        self.Gun = dict_gun[pygame.K_1]
+        self.gun_pos = 0
         self.damage = damage
         self.hp = 5
         self.hp_max = 5
@@ -16,16 +18,16 @@ class Player:
         
     def draw(self, surface, pos):
         pygame.draw.rect(surface, 'WHITE', self.rect, 0, 10)
+        pygame.draw.circle(surface, 'BLACK', self.rect.center, 8)
         length = ((pos[0] - self.rect.centerx)**2 + (pos[1] - self.rect.centery)**2)**0.5
         if length != 0:
-            self.end_posx = ((pos[0] - self.rect.centerx) * 50)/length + self.rect.centerx
-            self.end_posy = ((pos[1] - self.rect.centery) * 50)/length + self.rect.centery
+            self.end_posx = ((pos[0] - self.rect.centerx) * 30)/length + self.rect.centerx
+            self.end_posy = ((pos[1] - self.rect.centery) * 30)/length + self.rect.centery
         pygame.draw.line(surface, 'AQUA', self.rect.center,(self.end_posx, self.end_posy), 5)
         
         end_posx_red = (self.rect.right - self.rect.left) * (self.hp/self.hp_max) + self.rect.left
         pygame.draw.line(surface, 'WHITE', (self.rect.left, self.rect.topleft[1] - 10), (self.rect.right, self.rect.topright[1] - 10), 3)
         pygame.draw.line(surface, 'RED', (self.rect.left, self.rect.topleft[1] - 10), (end_posx_red, self.rect.topright[1] - 10), 3)
-        
         
     def update(self, screen, mouse_pos, game_timer, enemy_group):
         # player move
@@ -34,9 +36,17 @@ class Player:
         self.Gun.update(self.rect.center, mouse_pos, game_timer)
         # player collide enemy
         self.collide_enemy(enemy_group)
+        
+        self.change_gun()
         if self.hp <= 0:
             self.die = True
         
+    def change_gun(self):
+        key_press = pygame.key.get_pressed()
+        for key,value in self.dict_gun.items():
+            if key_press[key]:
+                self.Gun = self.dict_gun[key]
+                self.gun_pos = list(self.dict_gun.keys()).index(key)
     def move(self):
         key = pygame.key.get_pressed()
         self.move_up = key[K_UP] or key[K_w]
@@ -73,59 +83,58 @@ class Player:
             self.hp -= 1
                     
 class Gun():
-    def __init__(self, ammos, speed, speedGun, reloadTime, damage):
-        self.shoot = pygame.USEREVENT + 1
-        pygame.time.set_timer(self.shoot, speedGun)
+    def __init__(self, name, ammos, speed, speedGun, reloadTime, damage, color):
+        self.name = name
         self.reloadTime = reloadTime # time to reload ammos
         self.reloading = False # is reload
         self.speed = speed # speed of ammo
         self.ammos = ammos 
         self.ammos_max = ammos
         self.damage = damage
+        self.color = color
         self.magazine = []
-        self.shot_timer = 0  # Initialize the shot timer
-        self.shot_interval = speedGun # Set the desired shot interval in milliseconds
+        self.shoot_timer = 0  # Initialize the shot timer
+        self.shoot_interval = speedGun # Set the desired shot interval in milliseconds
         
         for _ in range(self.ammos):
-            bullet = Bullet(self.damage)
+            bullet = Bullet(self.damage, self.color)
             self.magazine.append(bullet)
         
     def update(self, player_pos, mouse_pos, current_time):
-        if self.ammos > 0:
-            self.reloading = False
-            self.fire(player_pos, mouse_pos, current_time)
-        else:
+        if pygame.key.get_pressed()[K_r]:
+            self.ammos = 0
+        if self.ammos <= 0:
             self.reloading = True
             self.reloadMag(current_time)
+        else:
+            self.fire(player_pos, mouse_pos, current_time)
             
     def fire(self, player_pos, mouse_pos, current_time):
         if pygame.mouse.get_pressed()[0]:
-            if current_time - self.shot_timer >= self.shot_interval:
-                self.shot_timer = current_time  # Update the shot timer
+            if current_time - self.shoot_timer >= self.shoot_interval:
+                self.shoot_timer = current_time  # Update the shot timer
                 self.magazine[self.ammos-1].reset(player_pos, mouse_pos)
                 self.magazine[self.ammos-1].active = True
                 self.ammos -= 1
                 
     def reloadMag(self, current_time):
-        if current_time - self.shot_timer >= self.reloadTime:
-            self.shot_timer = current_time
+        if current_time - self.shoot_timer >= self.reloadTime:
+            self.shoot_timer = current_time
             self.ammos = self.ammos_max
+            self.reloading = False
     
     def getTimeReload(self, current_time):
-        time_remaining = round((self.reloadTime - (current_time - self.shot_timer))/1000, 1)
-        if self.reloading:
-            return time_remaining
-        else:
-            return 0
+        time_remaining = round((self.reloadTime - (current_time - self.shoot_timer))/1000, 1)
+        return time_remaining if self.reloading else 0
         
-class Bullet(pygame.sprite.Sprite):
-    def __init__(self, damage):
-        super().__init__()
+class Bullet:
+    def __init__(self, damage, color):
         self.image = pygame.Surface((10, 10)) 
         self.rect = self.image.get_rect()  
         self.speed = 8
         self.active = False
         self.damage = damage
+        self.color = color
         
     def update(self):
         if self.active:
@@ -143,7 +152,7 @@ class Bullet(pygame.sprite.Sprite):
         
     def draw(self, screen):
         if self.active:
-            pygame.draw.rect(screen, 'WHITE', self.rect, 0, 3)
+            pygame.draw.rect(screen, self.color, self.rect, 0, 3)
     
     def inflictDmg(self):
         return self.damage if self.active else 0
@@ -153,7 +162,7 @@ class Enemy(pygame.sprite.Sprite):
     def __init__(self, speed, hp):
         super().__init__()
         self.color = (randint(0, 255), randint(0, 255), randint(0, 255))
-        self.image = pygame.Surface((40, 40))  
+        self.image = pygame.Surface((40, 40), )  
         self.image.fill(self.color)  
         self.rect = self.image.get_rect()  
         side = randint(0, 3) # 0: top, 1: right, 2: bottom, 3: left
